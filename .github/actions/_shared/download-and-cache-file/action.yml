@@ -37,7 +37,7 @@ runs:
         fi
         echo "CACHE_KEY=extras-${{ inputs.FILENAME }}-${VERSION_HASH}" >> $GITHUB_OUTPUT
       shell: bash
-    - uses: actions/cache/restore@v5
+    - uses: actions/cache/restore@v6
       id: cache-restore
       with:
         key: ${{ steps.check-version.outputs.CACHE_KEY }}
@@ -49,7 +49,7 @@ runs:
         mkdir -p extras-cache/${{ inputs.FILENAME }}/
         curl -L "${{ inputs.DOWNLOAD_URL }}" -o "extras-cache/${{ inputs.FILENAME }}/download.${{ inputs.FILE_TYPE }}" --retry 3 --retry-delay 5 --retry-max-time 600 --max-time 600 --fail --show-error
       shell: bash
-    - uses: actions/cache/save@v5
+    - uses: actions/cache/save@v6
       if: steps.cache-restore.outputs.cache-hit != 'true'
       with:
         key: ${{ steps.check-version.outputs.CACHE_KEY }}

@@ -11,7 +11,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/cache/restore@v5
+    - uses: actions/cache/restore@v6
       id: cache-restore
       with:
         key: ${{ inputs.CACHE_KEY }}
