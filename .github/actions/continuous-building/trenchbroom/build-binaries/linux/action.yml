@@ -24,50 +24,11 @@ runs:
       with:
         CACHE_KEY: ${{ inputs.ARTIFACT_FILENAME }}-files-${{ inputs.CICD_OPERATING_SYSTEM_NAME }}-${{ env.GIT_CURRENT_COMMIT_HEAD_SHA }}
         PATH: working-directory/${{ inputs.ARTIFACT_FILENAME }}-files-${{ inputs.CICD_OPERATING_SYSTEM_NAME }}/
-    - name: Set NuGet environment variables
-      uses: ./.github/actions/_shared/set-nuget-environment
     - name: Set specific environment variables
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
       run: |
         set -euo pipefail
-        echo "CC=gcc-13" >> $GITHUB_ENV
-        echo "CXX=g++-13" >> $GITHUB_ENV
         echo "TB_PULL_REQUEST_HEAD_SHA=${{ env.GIT_CURRENT_COMMIT_HEAD_SHA }}" >> $GITHUB_ENV
-        echo "VCPKG_BINARY_SOURCES=clear;nuget,${{ env.NUGET_FEED_URL }},readwrite" >> $GITHUB_ENV
-        echo "VCPKG_EXE=${{ github.workspace }}/working-directory/vcpkg/vcpkg" >> $GITHUB_ENV
-      shell: bash
-    - name: Install dependencies
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        set -euo pipefail
-        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-        sudo apt update
-        sudo apt install -y --no-install-recommends gcc-13 g++-13 build-essential libxi-dev libxrandr-dev libxxf86vm-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libglu1-mesa-dev libglm-dev pandoc ninja-build libglew-dev libfreeimage-dev libfreetype6-dev libtinyxml2-dev libassimp-dev libfuse2 mono-complete libx11-xcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libwayland-client0 libwayland-cursor0 libwayland-egl1 libxkbcommon-dev libxkbcommon-x11-0
-      shell: bash
-    - name: Bootstrap vcpkg
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        set -euo pipefail
-        ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
-      shell: bash
-    - name: Add NuGet sources
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        set -euo pipefail
-        mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
-          sources add \
-          -Source "${{ env.NUGET_FEED_URL }}" \
-          -StorePasswordInClearText \
-          -Name GitHubPackages \
-          -UserName "${{ env.NUGET_USERNAME }}" \
-          -Password "${{ github.token }}"
-        mono `${{ env.VCPKG_EXE }} fetch nuget | tail -n 1` \
-          setapikey "${{ github.token }}" \
-          -Source "${{ env.NUGET_FEED_URL }}"
       shell: bash
     - name: Install Qt
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
@@ -75,12 +36,34 @@ runs:
       with:
         CICD_OPERATING_SYSTEM_NAME: ${{ inputs.CICD_OPERATING_SYSTEM_NAME }}
         QT_VERSION: 6.10.*
-    - name: Compile the source code
+    - name: Build the container image
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
       working-directory: working-directory/
       run: |
         set -euo pipefail
-        ./CI-linux.sh
+        docker build -f docker/Dockerfile.build-linux -t tb-linux-ci:ubuntu22-gcc13 .
+      shell: bash
+    - name: Compile the source code
+      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        docker run --rm \
+          --user runner \
+          -e QT_ROOT_DIR="${QT_ROOT_DIR}" \
+          -e GITHUB_TOKEN="${GH_TOKEN}" \
+          -e CC=gcc-13 \
+          -e CXX=g++-13 \
+          -v "${{ github.workspace }}:${{ github.workspace }}" \
+          -v "${QT_ROOT_DIR}:${QT_ROOT_DIR}:ro" \
+          -w "${{ github.workspace }}/working-directory" \
+          tb-linux-ci:ubuntu22-gcc13 \
+          bash -lc '
+            set -euo pipefail
+            git config --global --add safe.directory "${{ github.workspace }}/working-directory"
+            ./CI-linux.sh
+          '
       shell: bash
     - name: Prepare the artifact
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'

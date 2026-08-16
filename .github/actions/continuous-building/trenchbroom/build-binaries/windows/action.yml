@@ -24,67 +24,23 @@ runs:
       with:
         CACHE_KEY: ${{ inputs.ARTIFACT_FILENAME }}-files-${{ inputs.CICD_OPERATING_SYSTEM_NAME }}-${{ env.GIT_CURRENT_COMMIT_HEAD_SHA }}
         PATH: working-directory/${{ inputs.ARTIFACT_FILENAME }}-files-${{ inputs.CICD_OPERATING_SYSTEM_NAME }}/
-    - name: Set NuGet environment variables
-      uses: ./.github/actions/_shared/set-nuget-environment
     - name: Set specific environment variables
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
       run: |
         $ErrorActionPreference = 'Stop'
         echo "TB_PULL_REQUEST_HEAD_SHA=${{ env.GIT_CURRENT_COMMIT_HEAD_SHA }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "VCPKG_BINARY_SOURCES=clear;nuget,${{ env.NUGET_FEED_URL }},readwrite" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        echo "VCPKG_EXE=${{ github.workspace }}\working-directory\vcpkg\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "TB_BUILD_TYPE=release" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "TB_ARCH=x64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       shell: pwsh
-    - name: Bootstrap vcpkg
+    - name: Install dependencies
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
       run: |
         $ErrorActionPreference = 'Stop'
-        .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-      shell: pwsh
-    - name: Add NuGet sources
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        $ErrorActionPreference = 'Stop'
-        .$(${{ env.VCPKG_EXE }} fetch nuget) `
-          sources add `
-          -Source "${{ env.NUGET_FEED_URL }}" `
-          -StorePasswordInClearText `
-          -Name GitHubPackages `
-          -UserName "${{ env.NUGET_USERNAME }}" `
-          -Password "${{ github.token }}"
-        .$(${{ env.VCPKG_EXE }} fetch nuget) `
-          setapikey "${{ github.token }}" `
-          -Source "${{ env.NUGET_FEED_URL }}"
-      shell: pwsh
-    - name: Restore Pandoc cache
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      id: cache-pandoc
-      uses: ./.github/actions/_shared/cache-restore
-      with:
-        CACHE_KEY: pandoc-2.11.3.1-${{ inputs.CICD_OPERATING_SYSTEM_NAME }}
-        PATH: working-directory/pandoc-2.11.3.1
-    - name: Install Pandoc
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true' && steps.cache-pandoc.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        $ErrorActionPreference = 'Stop'
-        Invoke-WebRequest https://github.com/jgm/pandoc/releases/download/2.11.3.1/pandoc-2.11.3.1-windows-x86_64.zip -OutFile pandoc.zip
-        7z x "pandoc.zip" -o"." -y
-      shell: pwsh
-    - name: Save Pandoc cache
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true' && steps.cache-pandoc.outputs.CACHE_HIT != 'true'
-      uses: ./.github/actions/_shared/cache-save
-      with:
-        CACHE_KEY: pandoc-2.11.3.1-${{ inputs.CICD_OPERATING_SYSTEM_NAME }}
-        PATH: working-directory/pandoc-2.11.3.1
-    - name: Add Pandoc to PATH
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        $ErrorActionPreference = 'Stop'
-        echo "$(pwd)\pandoc-2.11.3.1" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        choco install ccache pandoc --yes --no-progress
+        if (-not $env:ChocolateyInstall) { throw "ChocolateyInstall is not set" }
+        "$env:ChocolateyInstall\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        Get-Command ccache -ErrorAction Stop | Out-Null
+        Get-Command pandoc -ErrorAction Stop | Out-Null
       shell: pwsh
     - name: Install Qt
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
@@ -92,13 +48,6 @@ runs:
       with:
         CICD_OPERATING_SYSTEM_NAME: ${{ inputs.CICD_OPERATING_SYSTEM_NAME }}
         QT_VERSION: 6.10.*
-    - name: Patch CI script for parallel compilation
-      if: steps.cache-restore.outputs.CACHE_HIT != 'true'
-      working-directory: working-directory/
-      run: |
-        $ErrorActionPreference = 'Stop'
-        (Get-Content CI-windows.bat) -replace 'cmake --build \. --config Release', "cmake --build . --config Release -- -j $env:NUMBER_OF_PROCESSORS" | Set-Content CI-windows.bat
-      shell: pwsh
     - name: Compile the source code
       if: steps.cache-restore.outputs.CACHE_HIT != 'true'
       working-directory: working-directory/
