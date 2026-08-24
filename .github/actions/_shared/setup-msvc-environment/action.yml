@@ -4,3 +4,5 @@ runs:
   using: composite
   steps:
     - uses: TheMrMilchmann/setup-msvc-dev@v4
+      with:
+        arch: x64
